@@ -1,0 +1,118 @@
+# =============================================================================
+# Workflow: Markdown → PDF bei Release
+# =============================================================================
+name: "📄 Release PDF erstellen"
+
+# ---------------------------------------------------------------------------
+# Trigger: Nur bei veröffentlichten Releases (z. B. v1.0, v1.1, v2.0-beta)
+# ---------------------------------------------------------------------------
+on:
+  release:
+    types:
+      - published
+
+# ---------------------------------------------------------------------------
+# Berechtigungen: Schreibzugriff auf Release-Assets
+# ---------------------------------------------------------------------------
+permissions:
+  contents: write
+
+jobs:
+  build-pdf:
+    name: "PDF erzeugen und hochladen"
+    runs-on: ubuntu-latest
+
+    steps:
+      # -----------------------------------------------------------------------
+      # 1. Repository auschecken
+      # -----------------------------------------------------------------------
+      - name: "📥 Repository auschecken"
+        uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      # 2. Pandoc und LaTeX installieren
+      # -----------------------------------------------------------------------
+      - name: "🔧 Pandoc & LaTeX installieren"
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pandoc \
+            texlive-latex-base \
+            texlive-latex-recommended \
+            texlive-latex-extra \
+            texlive-fonts-recommended \
+            texlive-fonts-extra \
+            texlive-xetex \
+            texlive-lang-german \
+            librsvg2-bin
+          echo "--- Pandoc-Version ---"
+          pandoc --version | head -n 1
+
+      # -----------------------------------------------------------------------
+      # 3. Versionsnummer aus dem Tag extrahieren
+      #    github.ref_name enthält z. B. "v1.1"
+      # -----------------------------------------------------------------------
+      - name: "🏷️ Version aus Tag extrahieren"
+        id: version
+        run: |
+          VERSION="${{ github.ref_name }}"
+          echo "Erkannte Version: ${VERSION}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      # -----------------------------------------------------------------------
+      # 4. Platzhalter {{VERSION}} im Markdown ersetzen
+      # -----------------------------------------------------------------------
+      - name: "✏️ Versionsnummer in Markdown injizieren"
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "Ersetze {{VERSION}} durch ${VERSION} ..."
+          sed -i "s/{{VERSION}}/${VERSION}/g" docs/document.md
+          echo "--- Vorschau der ersten 30 Zeilen ---"
+          head -n 30 docs/document.md
+
+      # -----------------------------------------------------------------------
+      # 5. Markdown → PDF rendern
+      # -----------------------------------------------------------------------
+      - name: "📄 PDF mit Pandoc erzeugen"
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          OUTPUT_FILE="document-${VERSION}.pdf"
+
+          pandoc docs/document.md \
+            --from markdown \
+            --to pdf \
+            --pdf-engine=xelatex \
+            --template=templates/eisvogel.latex \
+            --variable mainfont="DejaVu Sans" \
+            --variable monofont="DejaVu Sans Mono" \
+            --variable geometry:margin=2.5cm \
+            --highlight-style tango \
+            --toc \
+            --number-sections \
+            --output "${OUTPUT_FILE}"
+
+          echo "✅ PDF erstellt: ${OUTPUT_FILE}"
+          ls -lh "${OUTPUT_FILE}"
+
+          # Dateinamen für nachfolgende Steps verfügbar machen
+          echo "pdf_file=${OUTPUT_FILE}" >> "$GITHUB_ENV"
+
+      # -----------------------------------------------------------------------
+      # 6. PDF als Release Asset hochladen
+      # -----------------------------------------------------------------------
+      - name: "🚀 PDF als Release Asset hochladen"
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.pdf_file }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # -----------------------------------------------------------------------
+      # 7. PDF zusätzlich als Actions Artifact speichern
+      # -----------------------------------------------------------------------
+      - name: "📦 PDF als Artifact hochladen"
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdf-dokument
+          path: ${{ env.pdf_file }}
+          retention-days: 90
