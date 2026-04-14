@@ -31,3 +31,19 @@ docker run --rm -v "$(pwd):/workspace" markdown-to-pdf \
 ```
 
 Replace `docs/document.md` with your Markdown file and `output/document.pdf` with the desired output filename.
+
+### Automated PDF creation with build-pdf.sh
+
+Alternatively, you can use the `build-pdf.sh` script to simplify PDF creation and automatically replace all `{{VERSION}}` placeholders:
+
+```sh
+./build-pdf.sh <source.md> <output.pdf> <VERSION>
+```
+
+Example:
+
+```sh
+./build-pdf.sh docs/guideline.md output/guideline.pdf 1.2.3
+```
+
+The script creates a temporary copy of the Markdown file, replaces all `{{VERSION}}` placeholders, and starts the Docker container as described above.
